@@ -22,6 +22,8 @@ using Windows.UI.Xaml.Shapes;
 using Windows.UI;
 using Windows.Graphics.Imaging;
 using Windows.UI.Xaml.Media.Imaging;
+using System.Diagnostics;
+using System.Threading.Tasks;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -41,12 +43,80 @@ namespace RealtimeFacedetection
             this.InitializeComponent();
         }
 
+
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            Debug.WriteLine("Navigate From");
+            this.StopDetection();
+            base.OnNavigatedFrom(e);
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            Debug.WriteLine("Navigate To");
+            this.StartCamera();
+            //this.DetectFace();
+            base.OnNavigatedTo(e);
+        }
+
+        private async void StartCamera()
+        {
+            this._mediaCapture = new MediaCapture();
+            await this._mediaCapture.InitializeAsync();
+            this.cePreview.Source = _mediaCapture;
+            await _mediaCapture.StartPreviewAsync();
+
+            // start detect face after start the camera
+            this.DetectFace();
+        }
+
+        private async void DetectFace()
+        {
+            var faceDetectionDefinition = new FaceDetectionEffectDefinition();
+            faceDetectionDefinition.DetectionMode = FaceDetectionMode.HighPerformance;
+            faceDetectionDefinition.SynchronousDetectionEnabled = false;
+            this._faceDetectionEffect = (FaceDetectionEffect)await
+                this._mediaCapture.AddVideoEffectAsync(faceDetectionDefinition, MediaStreamType.VideoPreview);
+            this._faceDetectionEffect.FaceDetected += FaceDetectionEffect_FaceDetected;
+            this._faceDetectionEffect.DesiredDetectionInterval = TimeSpan.FromMilliseconds(33);
+            this._faceDetectionEffect.Enabled = true;
+        }
+
+        private async void StopDetection()
+        {
+            this._faceDetectionEffect.Enabled = false;
+            this._faceDetectionEffect.FaceDetected -= FaceDetectionEffect_FaceDetected;
+            await this._mediaCapture.ClearEffectsAsync(MediaStreamType.VideoPreview);
+            this._faceDetectionEffect = null;
+            this.cvsFaceOverlay.Children.Clear();
+            await this.CleanupCameraAsync();
+        }
+
+        private async Task CleanupCameraAsync()
+        {
+            if (this._mediaCapture != null)
+            {
+                await this._mediaCapture.StopPreviewAsync();
+            }
+
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => {
+                this.cePreview.Source = null;
+                this._mediaCapture.Dispose();
+                this._mediaCapture = null;
+            });
+        }
+
         private async void btnCamera_Click(object sender, RoutedEventArgs e)
         {
             this._mediaCapture = new MediaCapture();
             await this._mediaCapture.InitializeAsync();
             this.cePreview.Source = _mediaCapture;
             await _mediaCapture.StartPreviewAsync();
+        }
+
+        private void btnNavigate_Click(object sender, RoutedEventArgs e)
+        {
+            this.Frame.Navigate(typeof(NewPage), null);
         }
 
         private async void btnDetectFaces_Click(object sender, RoutedEventArgs e)
